@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<!-- -
+ACU Quad Lighting Project
+2016 Brent Neal Reeves
+-->
+<html lang="en" ng-app="kitchensink">
+  <head>
+    <meta charset="utf-8">
+    
+    <title>Quad | Lights</title>
+    
+    <!-- -    <link rel="stylesheet" href="../css/master.css"> -->
+    <link rel="stylesheet" href="../css/prism.css">
+    <style>
+    pre { margin-left: 15px !important }
+    </style>
+    
+    <!--[if lt IE 9]>
+    <script src="../lib/excanvas.js"></script>
+    <![endif]-->
+    
+    <script src="../lib/prism.js"></script>
+    <script>
+    (function() {
+      var fabricUrl = '../lib/fabric.js';
+      if (document.location.search.indexOf('load_fabric_from=') > -1) {
+        var match = document.location.search.match(/load_fabric_from=([^&]*)/);
+        if (match && match[1]) {
+          fabricUrl = match[1];
+        }
+      }
+      document.write('<script src="' + fabricUrl + '"><\/script>');
+    })();
+    </script>
+    <script src="../js/master.js"></script>
+    
+    <!-- -    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.6/angular.min.js"></script> -->
+  </head>
+  <body>
+    
+    <div id="bd-wrapper" ng-controller="CanvasControls">
+      <h2><span>ACU Quad Project</span></h2>
+      
+      <canvas id="c" width="1000" height="300" style="border:1px solid #000000;"></canvas>
+      
+      <table>
+        <tr><td>Lights</td><td> <input type="text" id="FLD_lightcount" size="4" value="400"> </td> </tr>
+        <tr><td>Width</td><td> <input type="text" id="FLD_lightwidth" size="4" value="4"> </td> </tr>
+        <tr><td>Line %</td><td> <input type="text" id="FLD_linepercent" size="4" value="20"> </td> </tr>
+      </table>
+      
+      <button onclick="reset()">Reset</button>
+      <button onclick="populateRandom()">Populate Random</button>
+      <button onclick="populate()">Populate</button>
+      <button onclick="json1()">JSON</button>
+      <button onclick="ppXY()">ppXY</button>
+      <button onclick="wave()">Wave</button>
+      <button onclick="blink10()">Blink a few</button>
+      <button onclick="mask1()">Mask</button>
+      <button onclick="test_lightsInMask()">Test Mask</button>
+      <button onclick="test_pointSort)">Sort</button>
+      <button onclick="test_ppPoint()"> point</button>
+      <button onclick="test_ppPoints()"> points</button>
+      <input type="text" id="FLD_cmd" size="30" value="enter command here">
+      
+      
+      <script id="main">
+      var canvas = this.__canvas = new fabric.Canvas('c', {stateful: false});
+      var GLOBALS = {};
+      GLOBALS["LIGHTN"] = fldn('lightcount');
+      GLOBALS["ONEBIT"] = 'o';
+      GLOBALS["DELTA"] = 30;
+      GLOBALS["WAVEDELTA"] = 20;
+      GLOBALS["SPECIALS"] = [];
+      GLOBALS["BLINKDELAY"] = 10;
+      GLOBALS["TIMER1"];
+      GLOBALS["CANVASWIDTH"] = document.getElementById('c').clientWidth;
+      ll( 'canvas width ' +document.getElementById('c').clientWidth );
+
+      GLOBALS["MOUSELINE"] = -1;
+
+      GLOBALS["LINELIGHTS"] = [];
+      GLOBALS["LINEPERCENT"] = fldn('linepercent');
+      GLOBALS["LINEDELTA"] = 10;
+      GLOBALS["XX"] =0;
+      GLOBALS["YY"] =0;
+      
+      canvas.setBackgroundColor("rgba(0,0,0)");
+      
+      function ll ( jive ) { console.log(dt()+' '+ jive); }
+      
+      function distance(x1,y1, x2,y2) {
+        return ( Math.sqrt( ( Math.pow( Math.abs(x1 - x2), 2 )) +  ( Math.pow( Math.abs(y2 - y1), 2))))
+      }
+      
+      function init() {
+        fabric.Object.prototype.transparentCorners = false;
+        
+        canvas.on('mouse:down', function(e) {
+          // e.e.clientX Y is page coordinates
+          console.log('mouse:down ' +e.e.layerX +', ' + e.e.layerY );
+          colorNearXY(e.e.layerX, e.e.layerY, GLOBALS["DELTA"], 'white');
+        });
+        
+        canvas.on('mouse:up', function(e) {
+          // e.e.clientX Y is page coordinates
+          console.log('mouse:up ' +e.e.layerX +', ' + e.e.layerY );
+          colorNearXY(e.e.layerX, e.e.layerY, GLOBALS["DELTA"], 'blue');
+        });
+        
+        canvas.on('mouse:move', function(e) {
+          // e.e.clientX Y is page coordinates
+          //            ll('mouse:move ' +e.e.layerX +', ' + e.e.layerY );
+          if ( GLOBALS["MOUSELINE"] > -1) {
+            setColor( GLOBALS["LINELIGHTS"], 'blue');
+            GLOBALS["LINELIGHTS"] = [];
+          }
+          GLOBALS["MOUSELINE"] = e.e.layerX;
+          GLOBALS["LINEPERCENT"] = fldn('linepercent');
+          colorNearLineX(e.e.layerX, GLOBALS["LINEDELTA"], 'white', GLOBALS["LINEPERCENT"]);
+        });
+        
+        canvas.on('mouse:out', function(e) {
+          e.target.setFill('blue');
+          canvas.renderAll();
+        });
+
+        /*
+        canvas.on('object:modified', function(e) {
+        canvas.renderAll();
+        canvas.calcOffset();
+        });
+         */
+        
+        /*
+        canvas.on('mouse:over', function(e) {
+        e.target.setFill('red');
+        canvas.renderAll();
+        console.dir( e.target );
+        });
+         */
+        
+      }
+      
+        function pointsEqual(p1, p2) {
+          if (p1 == null) {
+            if (p2 == null) {
+              return true;
+            } else {
+              return false;
+            }
+          }
+
+          if (p2 == null) {
+            if (p1 == null) {
+              return true;
+            } else {
+              return false;
+            }
+          }
+          
+         return (p1[0] == p2[0] && p1[1] == p2[1]) ;
+        }
+        
+        
+        // needs SPECIALS
+        function blinkLights( aTime ) {
+          ll('blinkLights start ');
+          for (i=0; i< GLOBALS["SPECIALS"].length; i++) {
+            GLOBALS["SPECIALS"][i].setFill( 'white' );
+          }
+          canvas.renderAll();
+          console.log(dt()+ 'TIMER1 on ' + GLOBALS["SPECIALS"].length);
+          GLOBALS["TIMER1"] = setTimeout( resetLights, aTime );
+        }
+        
+        function resetLights ( ) {
+          ll('resetLights start ' + GLOBALS["SPECIALS"].length);
+          lights = GLOBALS["SPECIALS"];
+          for (i=0; i< lights.length; i++) {
+            lights[i].setFill( 'blue' );
+          }
+          canvas.renderAll();
+          clearTimeout (GLOBALS["TIMER1"] );
+        }
+        
+        function setColor ( lights, color ) {
+          for (i=0; i< lights.length; i++) {
+            lights[i].setFill( color );
+          }
+          canvas.renderAll();
+        }
+
+        function waveMask (mask) {
+          GLOBALS["XX"]=0;
+          GLOBALS["SPECIALS"] = lightsInMask(GLOBALS["XX"], GLOBALS["YY"], GLOBALS["MASK"], 5);
+          maskOn();
+        }
+
+        function maskOn() {
+          setColor( GLOBALS["SPECIALS"], 'white' );
+          GLOBALS["TIMER1"] = setTimeout( maskOff, GLOBALS["BLINKDELAY"]);
+        }
+
+        function maskOff() {
+          setColor( GLOBALS["SPECIALS"], 'blue');
+          if (GLOBALS["XX"] < GLOBALS["CANVASWIDTH"]) {
+            XX += GLOBALS["WAVEDELTA"];
+            GLOBALS["SPECIALS"] = lightsInMask(XX, YY, MASK, 5);
+            maskOn();
+          } else {
+            clearTimeout( GLOBALS["TIMER1"] );
+          }
+        }
+
+        
+        function wave() {
+          GLOBALS["XX"] = 0;
+          lightsNearXY( GLOBALS["XX"], 150, 35);
+          waveOn();              
+        }
+        
+        function waveOn() {
+          // turn on
+          // timer (waveOff)
+          //            console.log(dt()+' waveOn '+ XX);
+          setColor( GLOBALS["SPECIALS"], 'white' );
+          GLOBALS["TIMER1"] = setTimeout( waveOff, GLOBALS["BLINKDELAY"] );
+        }
+        
+        function waveOff() {
+          // turn off, increment,
+          // if not done, timer (waveOn)
+          //            console.log(dt()+' waveOff '+ XX);
+          setColor( GLOBALS["SPECIALS"], 'blue');
+          if (GLOBALS["XX"] < GLOBALS["CANVASWIDTH"]) {
+            GLOBALS["XX"] += GLOBALS["WAVEDELTA"];
+            lightsNearXY( GLOBALS["XX"], 150, 35);
+            waveOn();
+          } else {
+//            ll(' waveOff Kill Timer');
+            clearTimeout( GLOBALS["TIMER1"] );
+          }
+        }
+
+        function Point(x, y) {
+          this.x = x;
+          this.y = y;
+        }
+        
+
+        var mask2_tests = [
+           ['----',  [  ] ],
+           ['o---',  [ [0,0] ] ] ,
+           ['-o--',  [ [0,1] ] ] ,
+           ['--o-',  [ [1,0] ] ] ,
+           ['---o',  [ [1,1] ] ] ,
+           ['oo--',  [ [0,0], [0,1]]],
+           ['o-o-',  [ [0,0], [1,0]]],
+           ['o--o',  [ [0,0], [1,1]]],
+           ['-o-o',  [ [0,1], [1,1]]],
+           ['oo-o',  [ [0,0], [0,1], [1,1]]],
+           ['o-oo',  [ [0,0], [1,0], [1,1]]],
+           ['oooo',  [ [0,0], [0,1], [1,0], [1,1]]],
+
+           ['---------',  [  ] ],
+           ['o--------',  [ [0,0] ] ],
+           ['-o-------',  [ [0,1] ] ]
+        ];
+
+
+        function ppLight ( light ) {
+//          ll('ppLight ');
+//          console.dir( light );
+          if (light == null) {
+            return '( NULL )';
+          };
+          return '(' +light.left +',' +light.top +' ' +light.fill +')';
+        }
+
+        function ppLights ( lights ) {
+          var str = 'ppLights ';
+          for (var i=0; i< lights.length; i++) {
+            str += ppLight( lights[i] );
+          }
+          return str;
+        }
+          
+
+        function ppPoint( point ) {
+          if (point == null) {
+            return '( NULL )';
+          }
+          return '(' + point[0] + ',' + point[1] +') ';
+        }
+
+        function ppPoints ( points ) {
+          var str = '( ';
+          for (i=0; i< points.length; i++) {
+            str = str + ppPoint( points[i] );
+          }
+          return str + ' )';
+        }
+
+        function mask1() {
+          test_masks();
+          ll(' mask1 done ');
+        }
+
+
+        var MASK8 =
+        'oo------'+
+        '--oo----'+
+        '----oo--'+
+        '------oo'+
+        '----oo--'+
+        '--oo----'+
+        'oo------'+
+        '--------';
+
+        /**
+         *
+         * @param {mask} - string representing 2d mask
+         * @param {int} - how much to offset each rowxcol
+         */
+        function mask2Points ( mask, pixels = 1 ) {
+//          ll('mask2Points ' + mask + ' pixels: ' +pixels);
+          
+          var rows = Math.floor( Math.sqrt( mask.length ));
+          var l = mask.length;
+          var points = [];
+
+          for (i=0; i< mask.length; i++) {
+            if ( mask[i] == GLOBALS["ONEBIT"] ) {
+              var rr =  Math.floor ( i / rows );
+              var cc = i % rows;
+              points.push ( [ rr, cc ]);
+            }
+          }
+          points.sort( pointSort );
+          return points;
+        }
+  
+      /** oneD2twoD
+         *
+         * @param {string} - as a 2d square mask
+         */
+        function oneD2twoD( aString ) {
+          rows = Math.floor( Math.sqrt( aString.length ) );
+          for (r=0; r<rows; r++) {
+            for (c=0; c<rows; c++) {
+              var i = (r * rows) + c;
+              ll('i ' +r +',' +c);
+            }
+          }
+        }
+
+
+        /** lightsInShape
+         *
+         * @param {int} x - 
+         * @param {int} y - 
+         * @param {char[][]} mask - 2d char array '--o--'
+         *                                     '--o--'
+         * @param {int} range - how near you have to be to count as "in"
+         *
+         * ?? need to nix dups
+         */
+        function lightsInMask( x, y, mask, range ) {
+          ll('lightsInMask ' + ppPoints(mask));
+          var found = [];
+          var yep = [];
+          for (var i=0; i< mask.length; i++) {
+            var point = mask[i];
+            yep = lightsNearXY( x + point[0], y + point[1], range );
+            for (var j=0; j< yep.length; j++) {
+              if ( found.indexOf( yep[j] ) < 0 ) {
+                found.push( yep[j] );
+              }
+//              ll('lightsInMask found: ' + yep[j].left +',' +yep[j].top+ ' pp '+ ppLight(yep[j]));
+            }
+          }
+//          ll('lightsInMask b4 sort ' + ppLights(found));
+
+          found.sort( lightSort );
+//          ll('lights found:');
+//          console.dir(found);
+//          ll('lightsInMask afta sort ' + ppLights(found));
+          return found;
+        }
+
+        // assuming grid 100x100 and lights every 10
+        // x, y,  maskpoints,  expected points
+        var pointMask_test =
+        [
+          [ [ 10, 10, [ [0,0] ], 4 ],    [ [10,10] ] ],
+          [ [ 10, 10, [ [0,0], [0,1], [0,2], [0,3], [0,4] ], 4 ],    [ [10,10] ] ],
+          [ [ 10, 10, [ [0,0], [0,5], [0,10], [0,15], [0,20] ], 4 ],    [ [10,10], [10,20], [10,30] ] ],
+          [ [ 60, 40, [ [0,0], [10,10], [20,20], [10,30], [0,40] ], 4 ],    [ [60,40], [70,50], [80,60], [70,70], [60,80] ] ],
+        ]
+          
+
+        function test_lightsInMask () {
+          populate();
+          ll('test_lightsInMask');
+          var happy = true;
+          var p = pointMask_test;
+          for (var i=0; i< pointMask_test.length; i++) {
+            // get lights
+            var found = lightsInMask( p[i][0][0],
+                                     p[i][0][1],
+                                     p[i][0][2],
+                                     p[i][0][3] );
+//            ll('test_lightsInMask found: ' +ppLights(found));
+
+            var expect = p[i][1];
+            expect.sort( pointSort );
+
+            if ( ! lightsAtPoints(expect, found)) {
+              happy = false;
+              ll('arrays mismatch ('+ i +') expect:' +ppPoints(expect) +' found: ' +ppLights(found));
+            }
+          }
+          ll('test_lightsInMask ' + (happy ? 'passed '+pointMask_test.length : 'failed'));
+          return happy;
+        }
+
+
+        function blink10() {
+          ll(' blink10 start');
+          SPECIALS = [];
+          for (i=0; i<10; i++) {
+            SPECIALS.push(canvas.item(i));              
+          }
+          blinkLights( GLOBALS["BLINKDELAY"] );
+          console.log(dt()+ ' blink10 end '+ SPECIALS.length);
+        }
+
+        function lightX (light) { return light.left; }
+        function lightY (light) { return light.top; }
+
+        function lightsNearXY(x, y, range) {
+          GLOBALS["SPECIALS"] = [];
+          for (i=0; i< canvas.getObjects().length -1; i++) {
+            var it = canvas.item(i);
+            var delta = distance(x, y, it.left, it.top);
+            if ( delta < range ) {
+              GLOBALS["SPECIALS"].push( it );
+            }
+          }
+          return GLOBALS["SPECIALS"];
+        }
+        
+        
+        function colorNearLineX(x, range, color, pcnt) {
+//          ll('colorNearLineX ' +pcnt);
+          for (i=0; i< canvas.getObjects().length -1; i++) {
+            var it = canvas.item(i);
+            var delta = Math.abs(x - it.oCoords.ml.x);
+            if ( delta < range ) {
+              if ( (Math.random() * 100) < pcnt ) {
+                GLOBALS["LINELIGHTS"].push(it);
+                it.setFill( color );
+              }
+//              document.getElementById('c').width = document.getElementById('c').width;
+            }
+          }
+          canvas.renderAll();
+        }
+
+
+        function colorNearXY(x, y, range, color) {
+          for (i=0; i< canvas.getObjects().length -1; i++) {
+            var it = canvas.item(i);
+            var delta = distance(x, y, it.oCoords.ml.x, it.oCoords.mt.y);
+            if ( delta < range ) {
+              it.setFill( color );
+              canvas.renderAll();  // doesn't work
+              document.getElementById('c').width = document.getElementById('c').width;
+            }
+          }
+          canvas.renderAll();
+        }
+        
+
+        function ppXY() {
+          var points =[];
+          canvas.forEachObject( function(o) { points.push( [ lightX(o), lightY(o)] ) } );
+          points.sort( pointSort );
+          points.forEach( ppLight )
+        }
+
+        
+        function json1() {
+          console.log("json1 start");
+          console.log(JSON.stringify(canvas));
+          //              console.log(JSON.stringify(this.__canvas));
+          console.log(dt()+ " json1 end ");
+        }
+        
+        function nearness() {
+          console.log(dt()+ " nearness ");
+        }
+        
+        
+        function wave2() {
+          for (x=0; x < 800; x=x+10) {
+            lightsNearXY(x, 200, 40, 'white');
+            blinkLights();
+          }
+        }
+
+        function fldn(field) {
+          var f = document.getElementById('FLD_'+ field).value;
+//          ll('fldn '+ field);
+          return Number(f);
+        }
+
+        function reset() {
+          GLOBALS["LIGHTN"] = fldn("lightcount");
+          GLOBALS["LINEPERCENT"] = fldn('linepercent');
+          
+        }
+
+        function nixAllLights () {
+          var i=0;
+          canvas.forEachObject( function(o) { canvas.remove(o) });
+          ll('nixAllLights afta sb 0 ' + canvas.getObjects().length + '  i:' +i);
+        }
+
+        function populate( points ) {
+          nixAllLights();
+//          var points = [ [100,100], [100, 120], [100, 140]];
+          var points = [];
+          for (i=0; i< 100; i=i + 10) {
+            for (j=0; j< 100; j=j + 10) {
+              points.push( [i, j] );
+            }
+          }
+          for (var i=0; i< points.length; i++) {
+            canvas.add( new fabric['Rect']
+                       ({top: points[i][0], left: points[i][1], hasControls: false, fill: 'blue'
+                         ,width: fldn("lightwidth"), height: 6}));
+          }
+        }
+
+        function populateRandom() {
+          ll("populateRandom start");
+
+          nixAllLights();
+          
+          GLOBALS["LIGHTN"] = fldn("lightcount");
+          ll('lightcount '+ GLOBALS["LIGHTN"]);
+
+          for (var i=0; i < GLOBALS["LIGHTN"]; i++) {
+            var dim = fabric.util.getRandomInt(3, 12);
+            //    var klass = ['Rect', 'Circle'][fabric.util.getRandomInt(0,1)];
+            var klass = 'Rect';
+            //    var klass = 'Circle';
+            var options = {
+              top: 50 + fabric.util.getRandomInt(0, 150),
+              left: fabric.util.getRandomInt(0, GLOBALS["CANVASWIDTH"]),
+              hasControls: false,
+              fill: 'blue'
+            };
+
+            if (klass === 'Circle') {
+              options.radius = Math.max(dim - 3, 1);
+            }
+            else {
+              options.width = fldn("lightwidth");
+              options.height = dim;
+            }
+            canvas.add(new fabric[klass](options));
+          }
+          ll('   added lights: ' + canvas.getObjects().length);
+
+          console.log(dt()+ " populateRandom end");
+        }
+
+        function dt2() { return new Date().toTimeString();}
+
+        function dt() {
+          secs = new Date();
+          secs = Math.round(secs);
+          var hours = Math.floor(secs / (60 * 60));
+          
+          var divisor_for_minutes = secs % (60 * 60);
+          var minutes = Math.floor(divisor_for_minutes / 60);
+          
+          var divisor_for_seconds = divisor_for_minutes % 60;
+          var seconds = Math.ceil(divisor_for_seconds);
+          
+//          var obj = { "h": hours, "m": minutes, "s": seconds ) };
+          return hours+ ':' + minutes +':' + seconds;
+        }
+
+        function dt3() {
+          var date = new Date(null);
+          date.setSeconds(SECONDS); // specify value for SECONDS here
+          return date.toISOString().substr(11, 8);
+        }
+
+
+
+        /* ==================================================================
+         * TESTING
+         *
+         *
+         */
+
+        function test_pointsEqual () {
+          var p = [
+            [[0,0], [0,0], true],
+            [[0,1], [0,1], true],
+            [[1,1], [1,1], true],
+            [[2,1], [2,1], true],
+            [[0,0], [0,1], false],
+            [[1,0], [0,1], false],
+            [[2,2], [0,1], false],
+            [[0,1], [1,1], false],
+          ];
+          var fail = false;
+          for (i=0; i< p.length; i++) {
+            var rc = pointsEqual( p[i][0], p[i][1]);
+            if ( pointsEqual( p[i][0], p[i][1]) !== p[i][2]) {
+              ll('test_pointsEqual fail ' +rc +' !== ' + p[i][2]);
+              fail = true;
+            }
+          }
+          if (fail) {
+           ll('test_pointsEqual failed');
+          } else {
+            ll('test_pointsEqual passed');
+          }
+        }
+        
+        function test_ppPoint() {
+          ll ( 'test_ppPoint empty  array ' +ppPoint( [] ));
+          ll ( 'test_ppPoint nada ' +ppPoint( ));
+          ll ( 'test_ppPoint ' +ppPoint( [1,2] ));
+        }
+
+        function test_ppPoints() {
+          ll ( 'test_ppPoints ' +ppPoints( [[1,2], [3,4], [5,6]]));
+        }
+
+
+        function test_masks() {
+          var happy = true;
+          for (var i=0; i < mask2_tests.length; i++) {
+            if (! test_mask( mask2_tests[i][0], mask2_tests[i][1] ) )
+            happy = false;
+          }
+          ll('test_masks ' + (happy ? 'passed' : 'failed'));
+        }
+
+        
+        function test_mask( mask, expect ) {
+          var happy = true;
+          var pts = mask2Points( mask );
+          expect.sort( pointSort );
+
+//          ll('test_mask '+ mask + ' lenth ('+ expect.length + ')  sb: ' +ppPoints(expect) + '  actual: ' + ppPoints(pts));
+
+          for (i=0; i< expect.length; i++) {
+            var p1 = expect[i];
+            var p2 = pts[i];
+
+            if ( ! pointsEqual( p1, p2)) {
+              happy = false;
+              ll('test_mask fail ' + ppPoint(p1) + ' != ' + ppPoint(p2));
+            }
+          }
+          return happy;
+        }
+
+        // x,y 
+        function isLightAtPoint( point, light) {
+//          ll('isLightAtPoint start');
+          if ( ( point[0] == light.left) &&
+              ( point[1] == light.top)) {
+            return true;
+          }
+          return false;
+        }
+
+        function lightsAtPoints( points, lights) {
+//          ll('lightsAtPoints start');
+          happy = true;
+          if ( points.length != lights.length ) {
+            return false;
+          }
+          for (var i=0; i< points.length; i++) {
+            if (! isLightAtPoint( points[i], lights[i]))
+            happy = false;
+          }
+          return happy;
+        }
+
+        function pointsArrayMatch( a1, a2) {
+          happy = true;
+          for (var i=0; i< a1.length; i++) {
+            if (! pointsEqual( a1[i], a2[i] ) )
+            happy = false;
+          }
+          return happy;
+        }
+
+        function pointSort(a,b) {
+          if (a[0] < b[0]) return -1;
+          if (a[0] > b[0]) return 1;
+          if (a[1] < b[1]) {
+            return -1;
+          } else {
+            if (a[1] > b[1]) {
+              return 1;
+            } else {
+              return 0;
+            }
+          }
+        }
+
+        function lightSort(a,b) {
+          if (a.left < b.left) return -1;
+          if (a.left > b.left) return 1;
+          if (a.top < b.top) {
+            return -1;
+          } else {
+            if (a.top > b.top) {
+              return 1;
+            } else {
+              return 0;
+            }
+          }
+        }
+
+        function test_pointSort () {
+          var p = [ [80,0], [80,1], [70,1], [70,0] ];
+          ll('points before sort' + ppPoints( p ) );
+          p.sort( pointSort );
+          ll('points after sort' + ppPoints( p ) );
+        }
+        
+
+        
+        init();
+        populateRandom();
+        
+        </script>
+    </div>
+    
+    <script>
+(function() {
+  fabric.util.addListener(fabric.window, 'load', function() {
+    var canvas = this.__canvas || this.canvas,
+        canvases = this.__canvases || this.canvases;
+
+    canvas && canvas.calcOffset && canvas.calcOffset();
+
+    if (canvases && canvases.length) {
+      for (var i = 0, len = canvases.length; i < len; i++) {
+        canvases[i].calcOffset();
+      }
+    }
+  });
+})();
+</script>
+
+
+  </body>
+</html>
